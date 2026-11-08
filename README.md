@@ -3,10 +3,10 @@ A home lab setup using VMs to simulate using a SIEM (in this case wazuh).
 
 ```
 VM              Host-only IP
-Wazuh server	  192.168.56.10
-Ubuntu victim	  192.168.56.11
-Windows victim	192.168.56.12
-Kali	          192.168.56.13
+Wazuh server	    192.168.56.10
+Ubuntu victim	    192.168.56.11
+Windows victim	  192.168.56.12
+Kali	            192.168.56.13
 ```
 
 Wazuh Server (Ubunutu 24.04) Running Aggregation:
