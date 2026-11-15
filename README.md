@@ -1,26 +1,30 @@
-# SOC Lab: Wazuh SIEM Detection & Attack Simulation
+# Home SOC Lab with Wazuh
 
-A home lab built to practice deploying and operating a SIEM. Wazuh monitors two victim machines (Linux and Windows) while Kali Linux is used to simulate common attacks, validate what Wazuh detects, and identify detection gaps. All testing was performed against self-owned VMs on an isolated host-only network (192.168.56.0/24) — no production or third-party systems were targeted.
+## What this project is
 
-**Tools used:** Wazuh (SIEM/XDR), VirtualBox, Kali Linux, Hydra, Nikto, Sysmon <!-- add Suricata, nmap, etc. as you add them -->
+I built a small, isolated network of virtual machines to practice two things: setting up a security monitoring tool (Wazuh), and testing whether it actually notices when something happens.
+
+The setup: one VM acts as the SIEM (Wazuh), watching two other VMs (one Ubuntu, one Windows) that stand in for computers on a network. A fourth VM plays as an attacker. I ran a couple of common, well-known attacks against the victim VMs from Kali, then checked whether Wazuh's dashboard actually caught them.
+
+All of this ran on a private, isolated network I built myself (192.168.56.0/24).
+
+**Tools used:** Wazuh (the monitoring tool), VirtualBox (to run the VMs), Kali Linux (attack tools), Hydra (password guessing tool), Nikto (website scanner)
 
 ---
 
-## Architecture
+## The setup
 
-| VM | Role | OS | Host-only IP |
-|---|---|---|---|
-| Wazuh server | Manager, Indexer, Dashboard | Ubuntu 24.04 | 192.168.56.10 |
-| Ubuntu victim | Endpoint (SSH + Apache) | Ubuntu 26.04 LTS | 192.168.56.11 |
-| Windows victim | Endpoint | Windows 11 Home | 192.168.56.12 |
-| Kali | Attacker | Kali 2026 | 192.168.56.13 |
+| VM | What it's for | IP address |
+|---|---|---|
+| Wazuh server | Watches the other machines and shows alerts | 192.168.56.10 |
+| Ubuntu victim | Stand-in target machine/server | 192.168.56.11 |
+| Windows victim | Stand-in target machine/host | 192.168.56.12 |
+| Kali | Attacker machine | 192.168.56.13 |
 
-<!-- Optional: add a simple network diagram image here -->
-
-**Wazuh server running aggregation:**
+**Wazuh server running:**
 <img width="1101" height="1024" alt="image" src="https://github.com/user-attachments/assets/833efc5a-505e-4cb6-b0c8-587221e82ad0" />
 
-**Windows 11 VM (victim):**
+**Windows VM (victim):**
 <img width="1097" height="1073" alt="image" src="https://github.com/user-attachments/assets/8e84af00-8764-422e-b9d3-6985d2c96988" />
 
 **Ubuntu VM (victim):**
@@ -29,112 +33,69 @@ A home lab built to practice deploying and operating a SIEM. Wazuh monitors two 
 **Kali VM (attacker):**
 <img width="1091" height="1053" alt="image" src="https://github.com/user-attachments/assets/66c23bc1-e5cc-4266-b6c1-2da6908a7aed" />
 
----
+Before running any attacks, I confirmed both victim machines were reporting in and showing as active:
 
-## Setup
-
-- Deployed Wazuh agents on both victim VMs; confirmed both report as **Active** in the dashboard before any testing.
-- <!-- Add: FIM directories monitored, Apache log forwarding, Sysmon config used (e.g. SwiftOnSecurity), any other log sources -->
-
-**Wazuh dashboard before attacks — both agents active:**
 <img width="2550" height="783" alt="image" src="https://github.com/user-attachments/assets/d30e0b6e-caf1-4e02-8e90-b3655bf2b388" />
 
 ---
 
-## Attack Simulations
+## Test 1: Guessing a password (brute force)
 
-### 1. Port scan (nmap)
-<!-- Fill in: command used, result, whether Suricata was added, before/after comparison -->
-- **Tool:** nmap
-- **Result:**
-- **Detected?**
-- **Notes:**
-
-### 2. SSH brute force (Hydra)
-
-A weak-password account was created for testing (`labuser` / `sunshine1`, isolated lab network only), and a short wordlist of common passwords was used:
-
-```
-password
-123456
-letmein
-qwerty
-sunshine1
-admin
-welcome1
-```
+**What I did:** I created a test account on the Ubuntu VM with a weak password, then used a tool called Hydra to automatically try a short list of common passwords against it over SSH.
 
 ```
 ┌──(user㉿kali)-[~]
 └─$ hydra -l labuser -P pw.txt ssh://192.168.56.11 -t 4
-Hydra v9.7 (c) 2023 by van Hauser/THC & David Maciejak
 Hydra starting at 2026-11-08 14:10:07
-[DATA] max 4 tasks per 1 server, overall 4 tasks, 7 login tries (l:1/p:7), ~2 tries per task
 [DATA] attacking ssh://192.168.56.11:22/
 [22][ssh] host: 192.168.56.11   login: labuser   password: sunshine1
 1 of 1 target successfully completed, 1 valid password found
 Hydra finished at 2026-11-08 14:10:14
 ```
 
-**Result:** 183 total alerts generated, including **1 alert at level 12+**, 26 authentication failures, and 12 authentication successes. Top alert groups: `pam`, `authentication_failed`, `authentication_success`.
+**What Wazuh caught:** Wazuh flagged it. The alert description literally read **"Multiple authentication failures followed by a success"**. This was one of the more serious alerts it raised (severity 12 out of 15).
 
-| Rule ID | Description | Level | MITRE ATT&CK |
-|---|---|---|---|
-| <!--fill in--> | <!--fill in--> | 12+ | T1110 (Brute Force) |
-
-**After SSH brute force:**
 <img width="1919" height="954" alt="image" src="https://github.com/user-attachments/assets/f7b0dc7e-8523-4d02-9dda-ebf1068ed408" />
 
-<!-- Optional: note whether a longer/rockyou-style wordlist was tried and how alert volume/severity changed -->
+**Takeaway:** This confirms Wazuh can detect brute-force login attempts, and it labels them correctly.
 
-### 3. Web reconnaissance (Nikto)
+---
+
+## Test 2: Scanning a website for weaknesses
+
+**What I did:** I ran a tool called Nikto against the website running on the Ubuntu VM. Nikto automatically checks a web server for a long list of common misconfigurations and known weaknesses.
 
 ```
 ┌──(user㉿kali)-[~]
 └─$ nikto -h http://192.168.56.11
 - Nikto v2.6.1
 + Target IP:          192.168.56.11
-+ Target Port:        80
 + Server: Apache/2.4.66 (Ubuntu)
-+ [600050] Apache/2.4.66 appears to be outdated (current is at least 2.4.68).
-+ [013587] /: Suggested security headers missing (CSP, X-Content-Type-Options,
-  Referrer-Policy, Permissions-Policy, Strict-Transport-Security)
-+ [007342] /: X-Frame-Options header deprecated in favor of CSP frame-ancestors
-+ [007352] /: X-Content-Type-Options header not set
++ Apache/2.4.66 appears to be outdated (current is at least 2.4.68).
++ Suggested security headers missing (several)
 + 8107 requests: 0 errors and 9 items reported on the remote host
 + End Time: 2026-11-08 14:16:23 (GMT-5) (16 seconds)
 ```
 
-**Result:** 7,930 total alerts generated, including **4 alerts at level 12+**, 26 authentication failures, 14 authentication successes. Top alert groups: `web`, `accesslog`, `attack`, `recon`, `web_scan`. Top alerts included "Web server 404 error," "Multiple web server 4xx," **"XSS (Cross Site Script)"**, "Common web attack," and "Host-based anomaly."
+**What Wazuh caught:** This scan generated a lot more noise (over 7,900 total log entries, since Nikto makes thousands of requests), but a few stood out as serious:
 
-| Rule ID | Description | Level | MITRE ATT&CK |
-|---|---|---|---|
-| <!--fill in--> | <!--fill in--> | 12+ | T1595 (Active Scanning) |
-| <!--fill in--> | <!--fill in--> | 12+ | <!--fill in--> |
-| <!--fill in--> | <!--fill in--> | 12+ | <!--fill in--> |
-| <!--fill in--> | <!--fill in--> | 12+ | <!--fill in--> |
+- Wazuh flagged that the scan was specifically testing for a well-known, named security bug (it labeled it as a "Shellshock" attack attempt. After looking into it more, this only means Wazuh noticed the *attempt*, not that the bug was actually present on my server.
+- It also raised one alert about a user account being added around the same time, which doesn't match anything Nikto normally does. I haven't confirmed yet whether that's connected to the scan or just a coincidence from something else I did around that time — worth double-checking.
 
-<!-- Worth a sentence here: Nikto doesn't exploit XSS, only probes for it — explain why the XSS rule fired (signature match on probe pattern vs. true positive) -->
-
-**After web scanning attack:**
 <img width="1920" height="953" alt="image" src="https://github.com/user-attachments/assets/45f90711-6235-4187-9bba-b041d2122b9e" />
 
----
-
-## Detection Summary
-
-| Attack | Tool | Alerts Generated | Level 12+ Alerts | Detected? | MITRE ID |
-|---|---|---|---|---|---|
-| Port scan | nmap | | | | T1046 |
-| SSH brute force | Hydra | 183 | 1 | Yes | T1110 |
-| Web recon/scan | Nikto | 7,930 | 4 | Yes | T1595 |
+**Takeaway:** Wazuh picked up on the scan testing for a specific known vulnerability, even though my server probably isn't actually vulnerable to it.An alert firing means "a known attack pattern was seen," not necessarily "the attack succeeded."
 
 ---
 
-## Custom Detection Rules
-<!-- Fill in once written: rule XML, what gap it addresses, before/after test results -->
+## What I learned
 
----
+- How to set up a monitoring tool and get data on attacks.
+- A simple, well-known attack (password guessing) produced a clear, easy-to-read alert.
+- A broader scan produced a lot of alerts, and part of the skill is figuring out which ones actually matter versus which are just noise.
+- Not every alert that looks alarming (e.g., "attack followed by user creation") means what it sounds like — it's worth checking before assuming the worst.
 
-## Lessons Learned
-<!-- Fill in: e.g. host-based vs. network-based detection gap found with nmap, false positive investigation on XSS alert, alert volume tuning, etc. -->
+## What I'd like to try next
+- Test whether a plain network scan (just checking which doors/ports are open, without attacking anything) gets noticed at all, and if not, why.
+- Look into the "user added" alert above and figure out what actually caused it.
+- Try writing one simple custom alert rule of my own.
