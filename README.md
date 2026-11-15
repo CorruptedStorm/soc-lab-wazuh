@@ -8,7 +8,9 @@ The setup: one VM acts as the SIEM (Wazuh), watching two other VMs (one Ubuntu, 
 
 All of this ran on a private, isolated network I built myself (192.168.56.0/24).
 
-**Tools used:** Wazuh (the monitoring tool), VirtualBox (to run the VMs), Kali Linux (attack tools), Hydra (password guessing tool), Nikto (website scanner), nmap (network scanner)
+> **Disclaimer:** All testing was performed against self-owned VMs on an isolated network. No external systems were scanned or attacked.
+
+**Tools used:** Wazuh (the monitoring tool), VirtualBox (to run the VMs), Kali Linux (attack tools), Hydra (password guessing tool), Nikto (website scanner)
 
 ---
 
@@ -80,24 +82,17 @@ Hydra finished at 2026-11-08 14:10:14
 **What Wazuh caught:** This scan generated a lot more noise (over 7,900 total log entries, since Nikto makes thousands of requests), but a few stood out as serious:
 
 - Wazuh flagged that the scan was specifically testing for a well-known, named security bug (it labeled it as a "Shellshock" attack attempt. After looking into it more, this only means Wazuh noticed the *attempt*, not that the bug was actually present on my server.
-- It also raised one alert about a user account being added around the same time. After reviewing it, this wasn't related to the scan at all as it lined up with changes I had made to the `labuser` test account around the same time. 
+- It also raised one alert about a user account being added around the same time. After reviewing it, this wasn't related to the scan at all — it lined up with changes I had made to the `labuser` test account around the same time. A good reminder that alerts need to be checked against what you were actually doing before assuming they're related to the attack you're testing.
 
 <img width="1920" height="953" alt="image" src="https://github.com/user-attachments/assets/45f90711-6235-4187-9bba-b041d2122b9e" />
 
-**Takeaway:** Wazuh picked up on the scan testing for a specific known vulnerability, even though my server probably isn't actually vulnerable to it. An alert firing means "a known attack pattern was seen," not necessarily "the attack succeeded."
+**Takeaway:** Wazuh picked up on the scan testing for a specific known vulnerability, even though my server probably isn't actually vulnerable to it.An alert firing means "a known attack pattern was seen," not necessarily "the attack succeeded."
 
 ---
 
-## What I learned
-
-- How to set up a monitoring tool and get data on attacks.
-- A simple, well-known attack (password guessing) produced a clear, easy-to-read alert.
-- A broader scan produced a lot of alerts, and part of the skill is figuring out which ones actually matter versus which are just noise.
-- Not every alert that looks alarming (e.g., "attack followed by user creation") means what it sounds like — in this case it turned out to be unrelated to the attack and just overlapped with other changes I was making at the same time. It's worth checking before assuming the worst.
-
 ## Test 3: Scanning for open ports (nmap)
 
-**What I did:** I ran `nmap` against both victim VMs to scan for open ports. For this I expected to not have any alerts as the tool is network related.
+**What I did:** I ran `nmap` against both victim VMs to scan for open ports. I'd used nmap once before on my own home network, so I had some familiarity with it already.
 
 ```
 ┌──(user㉿kali)-[~]
@@ -128,10 +123,15 @@ Nmap done: 1 IP address (1 host up) scanned in 11.38 seconds
 
 **What Wazuh caught:** I ran the same scan against both the Ubuntu and Windows victims. On Ubuntu, no alerts matched the scan's timeframe. On Windows, there were 27 alerts in the dashboard, but all of them came from before I ran the scan (Windows Update-related activity like DLLs being dropped in system folders, and one disconnect notice) so none were new, and none appeared after the scan ran. In both cases, nmap itself produced zero alerts.
 
-**Takeaway:** This confirms the same limitation on both operating systems: Wazuh is host-based, so it watches what happens on a machine (logins, file changes, process activity) rather than network traffic arriving at it. A port scan alone doesn't touch any of that, so it passes through unnoticed on both Linux and Windows. Interestingly, the Windows side also showed a good example of a false positive unrelated to the test with routine Windows Update activity triggered alerts that looked superficially like a DLL hijack technique.
+**Takeaway:** This confirms the same limitation on both operating systems: Wazuh is host-based, so it watches what happens on a machine (logins, file changes, process activity) rather than network traffic arriving at it. A port scan alone doesn't touch any of that, so it passes through unnoticed on both Linux and Windows which is what I expected. Interestingly, the Windows side also showed a good example of a false positive unrelated to the test as a routine Windows Update triggered alerts that looked superficially like a DLL hijack technique, which was a good reminder to check alert timing against what was actually happening before assuming a connection.
 
 ---
 
 ## What I learned
+
+- How to set up a monitoring tool and get data on attacks.
+- A simple, well-known attack (password guessing) produced a clear, easy-to-read alert.
+- A broader scan produced a lot of alerts, and part of the skill is figuring out which ones actually matter versus which are just noise.
+- Not every alert that looks alarming (e.g., "attack followed by user creation") means what it sounds like. In this case it turned out to be unrelated to the attack and just overlapped with other changes I was making at the same time. It's worth checking before assuming the worst.
 - Port scans (nmap) were not detected on either victim machine, confirming that Wazuh's host-based monitoring doesn't see network-level activity like this by default and catching it would require a network-based tool (like an IDS) watching traffic directly.
 
